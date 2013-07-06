@@ -24,8 +24,7 @@ References:
 var fs = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
-var HTMLFILE_DEFAULT = "index.html";
-var CHECKSFILE_DEFAULT = "checks.json";
+var restler = require('restler');
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -36,16 +35,16 @@ var assertFileExists = function(infile) {
     return instr;
 };
 
-var cheerioHtmlFile = function(htmlfile) {
-    return cheerio.load(fs.readFileSync(htmlfile));
+var cheerioHtmlFile = function(contents) {
+    return cheerio.load(contents);
 };
 
 var loadChecks = function(checksfile) {
     return JSON.parse(fs.readFileSync(checksfile));
 };
 
-var checkHtmlFile = function(htmlfile, checksfile) {
-    $ = cheerioHtmlFile(htmlfile);
+var checkHtmlFile = function(contents, checksfile) {
+    $ = cheerioHtmlFile(contents);
     var checks = loadChecks(checksfile).sort();
     var out = {};
     for(var ii in checks) {
@@ -55,14 +54,29 @@ var checkHtmlFile = function(htmlfile, checksfile) {
     return out;
 };
 
+var reportChecks = function(checks) {
+  console.log(JSON.stringify(checks, null, 4));
+};
+
 if(require.main == module) {
     program
-        .option('-c, --checks ', 'Path to checks.json', assertFileExists, CHECKSFILE_DEFAULT)
-        .option('-f, --file ', 'Path to index.html', assertFileExists, HTMLFILE_DEFAULT)
+        .option('-c, --checks <file>', 'Path to checks.json', assertFileExists)
+        .option('-f, --file <file>', 'Path to file to grade', assertFileExists)
+        .option('-u, --url <url>', 'Url to file to grade')
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+    if (program.file) {
+      var out = checkHtmlFile(fs.readFileSync(program.file), program.checks);
+      reportChecks(out);
+    } else if (program.url) {
+      restler.get(program.url).on('complete', function(result, response) {
+        if (result instanceof Error) {
+          console.log("Cannot access url: %s. %s.", program.url, result);
+          process.exit(1);
+        }
+        var out = checkHtmlFile(result, program.checks);
+        reportChecks(out);
+      });
+    }
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
